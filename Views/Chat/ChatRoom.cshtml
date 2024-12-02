@@ -1,0 +1,79 @@
+﻿@{
+    ViewBag.Title = "Chat";
+}
+<h2>Chat</h2>
+<div class="container">
+    <input type="text" id="message" placeholder="Enter your message..." />
+    <input type="button" id="sendmessage" value="Send" />
+    <input type="hidden" id="displayname" value="@HttpContext.Current.Session["Username"]" />
+    <input type="hidden" id="userId" value="@Session["UserId"]" />
+    <input type="hidden" id="chatId" value="@Model.ChatId" />
+
+    <ul id="discussion"></ul>
+</div>
+
+@section scripts {
+    <script src="~/Scripts/jquery.signalR-2.2.2.js"></script>
+    <script src="~/signalr/hubs"></script>
+    <script>
+        $(function () {
+            var chatId = $('#chatId').val();
+            var displayName = $('#displayname').val();
+            var userId = $('#userId').val();
+
+            // Reference the auto-generated proxy for the hub
+            var chat = $.connection.chatHub;
+
+            // Function to add a message to the chat window
+            function addMessageToPage(sender, message, time) {
+                var formattedTime = time ? new Date(time).toLocaleString() : ''; // Format the time
+                $('#discussion').append('<li><strong>' + htmlEncode(sender)
+                    + '</strong>: ' + htmlEncode(message)
+                    + ' <span class="time">(' + formattedTime + ')</span></li>');
+            }
+
+
+            // Scroll chat to the bottom
+            function scrollToBottom() {
+                $('#discussion').scrollTop($('#discussion')[0].scrollHeight);
+            }
+
+            // HTML encode function
+            function htmlEncode(value) {
+                return $('<div />').text(value).html();
+            }
+
+            // SignalR callback for loading chat history
+            chat.client.loadChatHistory = function (messages) {
+                $('#discussion').empty(); // Clear existing messages
+                messages.forEach(function (message) {
+                    addMessageToPage(message.SenderName, message.MessageContent, message.SentTime);
+                });
+            };
+
+            // SignalR callback for receiving a new message
+            chat.client.addNewMessageToPage = function (sender, message, time) {
+                addMessageToPage(sender, message, time);
+            };
+
+            // Start SignalR connection
+            $.connection.hub.start().done(function () {
+                // Send message to server
+                $('#sendmessage').click(function () {
+                    // Call the Send method on the hub.
+                    chat.server.send($('#displayname').val(), $('#message').val(), $('#chatId').val(), $('#userId').val());
+                    // Clear text box and reset focus for next comment.
+                    $('#message').val('').focus();
+                });
+
+                // Request chat history on connection start
+                chat.server.getChatHistory(chatId);
+            });
+
+            // Error handling for SignalR
+            $.connection.hub.error(function (error) {
+                console.error('SignalR error: ' + error);
+            });
+        });
+    </script>
+}

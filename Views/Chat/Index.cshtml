@@ -1,0 +1,14 @@
+﻿@model IEnumerable<Chat.Models.EF.User>
+
+
+<h2>Danh sách người dùng</h2>
+<ul>
+    @foreach (var user in Model)
+    {
+        <li>
+            <strong>@user.Username</strong> - @user.Email
+            <a href="@Url.Action("CreateChat", "Chat", new { userId = user.UserId })">Bắt đầu trò chuyện</a>
+        </li>
+    }
+</ul>
+

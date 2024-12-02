@@ -1,0 +1,90 @@
+﻿@model IEnumerable<Chat.Models.EF.User>
+
+<h2>Nhắn tin riêng</h2>
+
+<ul id="userList">
+    @foreach (var user in Model)
+    {
+        <li data-user-id="@user.UserId" class="user-item">
+            <strong>@user.Username</strong>
+            <button class="start-chat" data-receiver-id="@user.UserId">Nhắn tin</button>
+        </li>
+    }
+</ul>
+
+<!-- Khu vực nhập tin nhắn -->
+<input type="text" id="privateMessage" placeholder="Nhập tin nhắn..." />
+<button id="sendPrivateMessage">Gửi</button>
+
+<ul id="privateDiscussion"></ul>
+
+<!-- Hidden input -->
+<input type="hidden" id="selectedReceiverId" />
+<input type="hidden" id="userId" value="@Session["UserId"]" />
+<input type="hidden" id="username" value="@Session["Username"]" />
+
+
+@section scripts {
+    <script src="~/Scripts/jquery.signalR-2.2.2.js"></script>
+    <script src="~/signalr/hubs"></script>
+    <script>
+        $(function () {
+            var chat = $.connection.chatHub;
+
+            // HTML encode function
+            function htmlEncode(value) {
+                return $('<div />').text(value).html();
+            }
+
+            // Thêm tin nhắn vào danh sách
+            function addMessageToPage(sender, message, time) {
+                var formattedTime = time ? new Date(time).toLocaleString() : '';
+                $('#privateDiscussion').append('<li><strong>' + htmlEncode(sender)
+                    + '</strong>: ' + htmlEncode(message)
+                    + ' <span class="time">(' + formattedTime + ')</span></li>');
+            }
+
+            // Callback khi nhận tin nhắn riêng
+            chat.client.receivePrivateMessage = function (senderName, message, time) {
+                addMessageToPage(senderName, message, time);
+            };
+
+            // Khi nhấp vào nút "Nhắn tin", đặt `selectedReceiverId`
+            $(document).on('click', '.start-chat', function () {
+                var receiverId = $(this).data('receiver-id');
+                $('#selectedReceiverId').val(receiverId); // Lưu người nhận hiện tại
+                $('#privateMessage').focus(); // Chuyển focus vào ô nhập tin nhắn
+            });
+            $.connection.hub.qs = { userId: $('#userId').val() }; // Đây là ID của người gửi
+            // Kết nối SignalR
+            $.connection.hub.start().done(function () {
+                $('#sendPrivateMessage').click(function () {
+                    var receiverId = $('#selectedReceiverId').val();
+                    var message = $('#privateMessage').val();
+                    console.log(receiverId)
+                    if (!receiverId) {
+                        alert('Vui lòng chọn người nhận!');
+                        return;
+                    }
+
+                    if (message.trim() !== '') {
+                        // Gọi hàm SendPrivateMessage từ server
+                        chat.server.sendPrivateMessage(receiverId, message, $('#userId').val(), $('#username').val());
+
+                        // Hiển thị tin nhắn của chính mình
+                        addMessageToPage('Bạn', message, new Date());
+                        $('#privateMessage').val('').focus();
+                    } else {
+                        alert('Vui lòng nhập tin nhắn!');
+                    }
+                });
+            });
+
+            // Xử lý lỗi SignalR
+            $.connection.hub.error(function (error) {
+                console.error('SignalR error: ' + error);
+            });
+        });
+
+    </script>
+}

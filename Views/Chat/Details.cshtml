@@ -1,0 +1,40 @@
+﻿@model Chat.Models.EF.Chat
+@{
+    ViewBag.Title = Model.ChatName;
+}
+@{
+    var messages = ViewBag.Messages as IEnumerable<Chat.Models.EF.Message>;
+}
+
+<h2>@Model.ChatName</h2>
+<p><strong>Type:</strong> @(Model.IsGroup ? "Group Chat" : "Private Chat")</p>
+
+<h3>Messages</h3>
+<div id="messages" class="border p-3" style="max-height: 300px; overflow-y: auto;">
+    @Html.Partial("_ChatMessages", messages)
+</div>
+
+<h3>Send a Message</h3>
+@using (Html.BeginForm("SendMessage", "Message", FormMethod.Post))
+{
+    @Html.Hidden("chatId", Model.ChatId)
+    <div class="form-group">
+        <label for="messageContent">Message</label>
+        @Html.TextArea("messageContent", null, new { @class = "form-control", rows = 3, required = "required" })
+    </div>
+    <button type="submit" class="btn btn-primary">Send</button>
+}
+
+@if (Model.IsGroup)
+{
+    <h3>Add Participant</h3>
+    using (Html.BeginForm("AddParticipant", "Chat", FormMethod.Post))
+    {
+        @Html.Hidden("chatId", Model.ChatId)
+        <div class="form-group">
+            <label for="userId">User ID</label>
+            @Html.TextBox("userId", null, new { @class = "form-control", required = "required" })
+        </div>
+        <button type="submit" class="btn btn-secondary">Add</button>
+    }
+}

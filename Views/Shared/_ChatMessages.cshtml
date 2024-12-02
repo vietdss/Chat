@@ -1,0 +1,10 @@
+﻿@model IEnumerable<Chat.Models.EF.Message>
+
+@foreach (var message in Model)
+{
+    <div class="mb-2">
+        <strong>@message.SenderId:</strong>
+        <p>@message.MessageContent</p>
+        <small class="text-muted">@message.SentTime@*.ToString("g")*@</small>
+    </div>
+}
