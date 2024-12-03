@@ -1,5 +1,6 @@
 ﻿using Chat.Models;
 using Chat.Models.EF;
+using Chat.Models.ViewModel;
 using System;
 using System.Collections.Generic;
 using System.Linq;
@@ -17,11 +18,27 @@ namespace Chat.Controllers
         public ActionResult Index()
         {
             int currentUserId = Convert.ToInt32(Session["UserId"]);
+
+            // Lấy danh sách người dùng (ngoại trừ người dùng hiện tại)
             var users = db.Users
                           .Where(u => u.UserId != currentUserId)
                           .ToList();
 
-            return View(users);
+            // Lấy danh sách nhóm chat mà người dùng hiện tại tham gia
+            var groups = db.ChatParticipants
+                           .Where(cp => cp.UserId == currentUserId)
+                           .Select(cp => cp.Chat)
+                           .Where(c => c.IsGroup) // Chỉ lấy nhóm chat
+                           .ToList();
+
+            // Tạo ViewModel
+            var viewModel = new ChatViewModel
+            {
+                Users = users,
+                Groups = groups
+            };
+
+            return View(viewModel);
         }
         public ActionResult UserList()
         {
@@ -34,35 +51,6 @@ namespace Chat.Controllers
 
         }
 
-        public ActionResult CreateChat(int userId)
-        {
-            int currentUserId = Convert.ToInt32(Session["UserId"]);
-            var chat = db.Chats
-                         .FirstOrDefault(c => !c.IsGroup &&
-                                              c.ChatParticipants.Any(cp => cp.UserId == currentUserId) &&
-                                              c.ChatParticipants.Any(cp => cp.UserId == userId));
-            if (chat == null)
-            {
-                // Tạo cuộc trò chuyện mới
-                var newChat = new Models.EF.Chat
-                {
-                    ChatName = "Private Chat",
-                    IsGroup = false,
-                    CreatedDate = DateTime.Now
-                };
-                db.Chats.Add(newChat);
-                db.SaveChanges();
-
-                // Thêm người tham gia
-                db.ChatParticipants.Add(new ChatParticipant { ChatId = newChat.ChatId, UserId = currentUserId });
-                db.ChatParticipants.Add(new ChatParticipant { ChatId = newChat.ChatId, UserId = userId });
-                db.SaveChanges();
-
-                chat = newChat;
-            }
-
-            return RedirectToAction("ChatRoom", new { id = chat.ChatId });
-        }
 
         public ActionResult ChatRoom(int id)
         {

@@ -11,7 +11,7 @@ namespace Chat
     public class ChatHub : Hub
     {
         private readonly Chat_DbContext db = new Chat_DbContext();
-       
+
         // Lưu danh sách kết nối (UserId -> ConnectionId)
         private static readonly ConcurrentDictionary<int, string> UserConnections = new ConcurrentDictionary<int, string>();
 
@@ -27,7 +27,7 @@ namespace Chat
         // Sự kiện khi người dùng ngắt kết nối
         public override Task OnDisconnected(bool stopCalled)
         {
-            
+
             int userId = GetUserIdFromContext();
             UserConnections.TryRemove(userId, out _);
             return base.OnDisconnected(stopCalled);
@@ -36,29 +36,92 @@ namespace Chat
         // Gửi tin nhắn riêng
         public void SendPrivateMessage(int receiverId, string message, int senderId, string senderName)
         {
-            // Lưu tin nhắn vào cơ sở dữ liệu
-            var newMessage = new Message
+            if (string.IsNullOrWhiteSpace(message))
             {
-                SenderId = senderId,
-                ReceiverId = receiverId,
-                MessageContent = message,
-                SentTime = DateTime.Now,
-                MessageType = "private" // Đặt loại tin nhắn là "private"
-            };
-
-            // Thêm tin nhắn vào bảng Messages
-            db.Messages.Add(newMessage);
-            db.SaveChanges();
-
-            // Gửi tin nhắn đến người nhận nếu đang kết nối
-            if (UserConnections.TryGetValue(receiverId, out string connectionId))
-            {
-                Clients.Client(connectionId).receivePrivateMessage(senderName, message, DateTime.Now);
+                Clients.Caller.notify("Tin nhắn không được để trống.");
+                return;
             }
-            else
+
+            try
             {
-                // Nếu người nhận không trực tuyến, bạn có thể thêm logic thông báo hoặc lưu trạng thái chưa đọc
-                Clients.Caller.receivePrivateMessage("Hệ thống", "Người nhận không trực tuyến.", DateTime.Now);
+                // Kiểm tra xem đã tồn tại ChatId giữa senderId và receiverId chưa
+                var existingChat = db.ChatParticipants
+                    .Where(cp => cp.UserId == senderId)
+                    .Select(cp => cp.ChatId)
+                    .Intersect(
+                        db.ChatParticipants.Where(cp => cp.UserId == receiverId)
+                        .Select(cp => cp.ChatId)
+                    )
+                    .FirstOrDefault();
+
+                int chatId;
+                if (existingChat == 0) // Nếu chưa có, tạo ChatId mới
+                {
+                    var newChat = new Models.EF.Chat
+                    {
+                        ChatName = null, // Để trống cho tin nhắn riêng
+                        IsGroup = false, // Đây là chat cá nhân
+                        CreatedDate = DateTime.Now
+                    };
+
+                    db.Chats.Add(newChat);
+                    db.SaveChanges();
+
+                    chatId = newChat.ChatId;
+
+                    // Thêm người gửi vào bảng ChatParticipants
+                    db.ChatParticipants.Add(new ChatParticipant
+                    {
+                        ChatId = chatId,
+                        UserId = senderId,
+                        Role = "member",
+                        JoinedDate = DateTime.Now
+                    });
+
+                    // Thêm người nhận vào bảng ChatParticipants
+                    db.ChatParticipants.Add(new ChatParticipant
+                    {
+                        ChatId = chatId,
+                        UserId = receiverId,
+                        Role = "member",
+                        JoinedDate = DateTime.Now
+                    });
+
+                    db.SaveChanges();
+                }
+                else
+                {
+                    chatId = existingChat;
+                }
+
+                // Lưu tin nhắn vào cơ sở dữ liệu
+                var newMessage = new Message
+                {
+                    SenderId = senderId,
+                    ReceiverId = receiverId,
+                    ChatId = chatId,
+                    MessageContent = message,
+                    SentTime = DateTime.Now,
+                    MessageType = "private"
+                };
+
+                db.Messages.Add(newMessage);
+                db.SaveChanges();
+
+                // Gửi tin nhắn đến người nhận nếu đang kết nối
+                if (UserConnections.TryGetValue(receiverId, out string connectionId))
+                {
+                    Clients.Client(connectionId).receivePrivateMessage(senderName, message, DateTime.Now);
+                }
+                else
+                {
+                    // Nếu người nhận không trực tuyến
+                    Clients.Caller.receivePrivateMessage("Hệ thống", "Người nhận không trực tuyến.", DateTime.Now);
+                }
+            }
+            catch (Exception ex)
+            {
+                Clients.Caller.notify($"Lỗi khi gửi tin nhắn: {ex.Message}");
             }
         }
 
@@ -127,11 +190,27 @@ namespace Chat
             }
         }
 
+
         // Lấy UserId từ ngữ cảnh
         private int GetUserIdFromContext()
         {
             // Ví dụ: nếu UserId lưu trong Context.QueryString
             return int.Parse(Context.QueryString["userId"]);
+        }
+        public int GetChatId(int senderId, int receiverId)
+        {
+
+            var chatId = db.ChatParticipants
+                .Where(cp => cp.UserId == senderId)
+                .Select(cp => cp.ChatId)
+                .Intersect(
+                    db.ChatParticipants.Where(cp => cp.UserId == receiverId)
+                    .Select(cp => cp.ChatId)
+                )
+                .FirstOrDefault();
+
+            return chatId;
+
         }
     }
 }

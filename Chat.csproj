@@ -162,6 +162,7 @@
     <Compile Include="Models\EF\Message.cs" />
     <Compile Include="Models\EF\User.cs" />
     <Compile Include="Models\RequireLoginAttribute.cs" />
+    <Compile Include="Models\ViewModel\ChatViewModel.cs" />
     <Compile Include="Models\ViewModel\LoginViewModel.cs" />
     <Compile Include="Models\ViewModel\RegisterViewModel.cs" />
     <Compile Include="Properties\AssemblyInfo.cs" />

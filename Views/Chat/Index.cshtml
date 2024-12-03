@@ -1,14 +1,186 @@
-﻿@model IEnumerable<Chat.Models.EF.User>
+﻿@model Chat.Models.ViewModel.ChatViewModel
+<!-- Styles -->
+<link href="https://cdn.jsdelivr.net/npm/bootstrap@4.5.0/dist/css/bootstrap.min.css" rel="stylesheet">
+<link href="~/Content/assets/styles/chat.css" rel="stylesheet" />
+<link href="https://maxcdn.bootstrapcdn.com/font-awesome/4.7.0/css/font-awesome.min.css" rel="stylesheet" />
 
+<h2>Nhắn tin riêng</h2>
 
-<h2>Danh sách người dùng</h2>
-<ul>
-    @foreach (var user in Model)
-    {
-        <li>
-            <strong>@user.Username</strong> - @user.Email
-            <a href="@Url.Action("CreateChat", "Chat", new { userId = user.UserId })">Bắt đầu trò chuyện</a>
-        </li>
-    }
-</ul>
+<!-- Danh sách người dùng -->
+<div class="container">
+    <div class="row clearfix">
+        <div class="col-lg-4">
+            <div class="card chat-app">
+                <div id="plist" class="people-list">
+                    <div class="input-group mb-3">
+                        <div class="input-group-prepend">
+                            <span class="input-group-text"><i class="fa fa-search"></i></span>
+                        </div>
+                        <input type="text" id="searchBox" class="form-control" placeholder="Tìm kiếm...">
+                    </div>
+                    <ul id="userList" class="list-unstyled chat-list mt-2 mb-0">
+                        @foreach (var user in Model.Users)
+                        {
+                            <li class="clearfix user-item" data-user-id="@user.UserId" data-type="user">
+                                <img src="https://bootdey.com/img/Content/avatar/avatar1.png" alt="avatar">
+                                <div class="about">
+                                    <div class="name">@user.Username</div>
+                                    <div class="status"><i class="fa fa-circle online"></i> online</div>
+                                </div>
+                            </li>
+                        }
+                        @foreach (var group in Model.Groups)
+                        {
+                            <li class="clearfix group-item" data-chat-id="@group.ChatId" data-type="group">
+                                <img src="https://bootdey.com/img/Content/avatar/avatar2.png" alt="avatar">
+                                <div class="about">
+                                    <div class="name">@group.ChatName</div>
+                                    <div class="status"><i class="fa fa-users"></i> Nhóm</div>
+                                </div>
+                            </li>
+                        }
+                    </ul>
+                </div>
+            </div>
+        </div>
+
+        <!-- Khu vực chat -->
+        <div class="col-lg-8">
+            <div class="card chat">
+                <div id="chatSection" class="chat">
+                    <div class="chat-header clearfix">
+                        <div class="row">
+                            <div class="col-lg-6">
+                                <a href="javascript:void(0);" id="userInfoLink">
+                                    <img src="https://bootdey.com/img/Content/avatar/avatar1.png" alt="avatar" id="userAvatar">
+                                </a>
+                                <div class="chat-about">
+                                    <h6 id="chatUserName" class="m-b-0">Chat với: </h6>
+                                    <small id="lastSeenTime">Hoạt động gần nhất: </small>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                    <div id="chatHistory" class="chat-history">
+                        <!-- Lịch sử tin nhắn sẽ được tải tại đây -->
+                    </div>
+                    <div class="chat-message clearfix">
+                        <div class="input-group">
+                            <input type="text" id="messageInput" class="form-control" placeholder="Nhập tin nhắn..." />
+                            <div class="input-group-append">
+                                <button id="sendMessageBtn" class="btn btn-primary">Gửi</button>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<input type="hidden" id="selectedReceiverId" />
+<input type="hidden" id="userId" value="@Session["UserId"]" />
+<input type="hidden" id="username" value="@Session["Username"]" />
+<!-- Scripts -->
+<script src="https://code.jquery.com/jquery-3.6.0.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/bootstrap@4.5.0/dist/js/bootstrap.bundle.min.js"></script>
+
+@section scripts {
+    <script src="~/Scripts/jquery.signalR-2.2.2.js"></script>
+    <script src="~/signalr/hubs"></script>
+
+    <script>
+        $(function () {
+            const chat = $.connection.chatHub;
+
+            // Thêm tin nhắn vào lịch sử
+            function addMessageToChatHistory(senderName, messageContent, sentTime) {
+                const timeFormatted = sentTime ? new Date(sentTime).toLocaleString() : '';
+                const messageHTML = `
+                            <div class="clearfix">
+                                <div class="message-data">
+                                    <span class="message-data-time">${timeFormatted}</span>
+                                    <span class="message-data-name">${senderName}</span>
+                                </div>
+                                <div class="message ${senderName === 'Bạn' ? 'my-message' : 'other-message'}">
+                                    ${$('<div/>').text(messageContent).html()}
+                                </div>
+                            </div>`;
+                $('#chatHistory').append(messageHTML);
+            }
+
+            // Nhận tin nhắn từ server
+            chat.client.receivePrivateMessage = function (senderName, messageContent, sentTime) {
+                addMessageToChatHistory(senderName, messageContent, sentTime);
+            };
+
+            // Nhận lịch sử tin nhắn từ server
+            chat.client.loadChatHistory = function (messages) {
+                $('#chatHistory').empty(); // Xóa lịch sử cũ
+                messages.forEach(function (msg) {
+                    addMessageToChatHistory(msg.SenderName, msg.MessageContent, msg.SentTime);
+                });
+            };
+
+            // Bắt đầu kết nối SignalR
+            $.connection.hub.qs = { userId: $('#userId').val() }; // Truyền UserId từ Session
+            $.connection.hub.start().done(function () {
+                console.log("Kết nối thành công!");
+
+                // Gửi tin nhắn
+                $('#sendMessageBtn').click(function () {
+                    const receiverId = $('#selectedReceiverId').val();
+                    const message = $('#messageInput').val().trim();
+
+                    if (!receiverId || message === '') {
+                        alert('Vui lòng chọn người nhận và nhập tin nhắn!');
+                        return;
+                    }
+
+                    chat.server.sendPrivateMessage(receiverId, message, $('#userId').val(), $('#username').val());
+                    addMessageToChatHistory('Bạn', message, new Date());
+                    $('#messageInput').val('').focus();
+                });
+            });
+            $('#userList').on('click', '.group-item', function () {
+                const groupId = $(this).data('chat-id');
+                const groupName = $(this).find('.name').text();
+
+                // Đặt thông tin nhóm vào giao diện
+                $('#selectedReceiverId').val(groupId);
+                $('#chatUserName').text(`Nhóm: ${groupName}`);
+                $('#lastSeenTime').text('Hoạt động gần đây');
+
+                // Yêu cầu server trả về lịch sử tin nhắn của nhóm
+                chat.server.getChatHistory(groupId)
+            });
+            // Xử lý khi nhấn vào người dùng
+            $('#userList').on('click', 'li', function () {
+                const otherUserId = $(this).data('user-id');
+                const userName = $(this).find('.name').text();
+                const currentUserId = $('#userId').val();
+
+                chat.server.getChatId(currentUserId, otherUserId).done(function (chatId) {
+                    if (chatId) {
+                        $('#selectedReceiverId').val(otherUserId);
+                        $('#chatUserName').text(`Chat với: ${userName}`);
+                        $('#lastSeenTime').text('Hoạt động gần đây');
+
+                        // Lấy lịch sử chat
+                        chat.server.getChatHistory(chatId);
+                    } else {
+                        alert('Không tìm thấy cuộc trò chuyện.');
+                    }
+                }).fail(function (error) {
+                    console.error('Lỗi khi lấy ChatId:', error);
+                });
+            });
+
+            // Xử lý lỗi SignalR
+            $.connection.hub.error(function (error) {
+                console.error('Lỗi kết nối SignalR:', error);
+            });
+        });
+    </script>
+}
 
